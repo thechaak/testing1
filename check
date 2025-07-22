@@ -1,1 +1,110 @@
-check
+
+Hi andi Hari garu.. 
+----
+ee pipeline file ni direct meeru ADF_DW repo lo add cheyndi..
+--------------------------------------------------------------------------------------
+trigger: none
+
+stages:
+- stage: Dev
+  displayName: ADF_DW Dev Deployment
+  variables:
+    - group: 'ADF_DW_Dev_VG'
+  jobs:
+
+  - job: StartBuildServer
+    displayName: 'Start Build VM (if needed)'
+    pool:
+      name: Default
+    steps:
+    - task: AzurePowerShell@5
+      name: StartServer
+      displayName: 'Start Build Agent (Placeholder Script)'
+      inputs:
+        azureSubscription: 'ADF_DW_SC_DEV'
+        ScriptType: 'InlineScript'
+        Inline: |
+          Write-Output "No VM start required for hosted pipelines."
+        azurePowerShellVersion: 'LatestVersion'
+        pwsh: true
+
+  - job: DeployADF
+    displayName: 'Deploy Azure Data Factory Assets'
+    dependsOn: StartBuildServer
+    pool:
+      name: Default
+    steps:
+
+    - task: AzurePowerShell@5
+      name: StopTriggers
+      displayName: 'Stop Triggers (Simulated)'
+      inputs:
+        azureSubscription: 'ADF_DW_SC_DEV'
+        ScriptType: 'InlineScript'
+        Inline: |
+          Write-Output "Simulated: Stopping triggers..."
+        pwsh: true
+        azurePowerShellVersion: 'LatestVersion'
+
+    - task: AzureResourceManagerTemplateDeployment@3
+      displayName: 'Deploy ARM Template (ADF resources)'
+      inputs:
+        deploymentScope: 'Resource Group'
+        azureResourceManagerConnection: 'ADF_DW_SC_DEV'
+        subscriptionId: '$(subscriptionId)'
+        action: 'Create Or Update Resource Group'
+        resourceGroupName: '$(resourceGroupName)'
+        location: 'uksouth'
+        templateLocation: 'Linked artifact'
+        csmFile: 'ADF_DW/templates/TEST_TEMPLATE/TEST_TEMPLATE.json'
+        csmParametersFile: 'ADF_DW/templates/TEST_TEMPLATE/TEST_TEMPLATE.parameters.json'
+        overrideParameters: |
+          -factoryName $(dataFactoryName)
+          -SnowflakeReportingDev $(linkedServiceSnowflake)
+          -LinkedService_SQL_Server $(linkedServiceSQL)
+          -Clinical2 $(linkedServiceBlob)
+        deploymentMode: 'Incremental'
+
+    - task: AzurePowerShell@5
+      name: StartTriggers
+      displayName: 'Start Triggers (Simulated)'
+      inputs:
+        azureSubscription: 'ADF_DW_SC_DEV'
+        ScriptType: 'InlineScript'
+        Inline: |
+          Write-Output "Simulated: Starting triggers..."
+        pwsh: true
+        azurePowerShellVersion: 'LatestVersion'
+
+  - job: EvaluateDeploymentResult
+    displayName: 'Soft Validate Errors'
+    dependsOn: DeployADF
+    pool:
+      name: Default
+    continueOnError: true
+    steps:
+    - pwsh: |
+        Write-Host "##vso[task.logissue type=error]Some parameters may be missing or services not reachable."
+        Write-Host "##vso[task.complete result=SucceededWithIssues;]Marking as succeeded with warnings."
+      displayName: 'Validate and Soft Fail'
+
+
+
+-----------
+then 3 variable groups add cheyandi.. 
+
+To Add Variable Groups 
+In Azure DevOps → Pipelines → Library, create 3 variable groups:
+
+ADF_DW_Dev_VG, ADF_DW_Uat_VG, ADF_DW_Prod_VG
+
+Name: ADF_DW_Dev_VG
+Variables:
+  dataFactoryName = Cyg-DataFactory
+  subscriptionId = <replace with actual dev subscription ID>
+  resourceGroupName = ADF-Dev-RG
+  linkedServiceSnowflake = SnowflakeReportingDev
+  linkedServiceSQL = LinkedService_SQL_Server
+  linkedServiceBlob = Clinical2
+  
+same for UAT and Prod.
