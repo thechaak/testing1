@@ -1,0 +1,91 @@
+#ADF deployment from DEV to Test
+
+
+trigger:
+- none
+   
+stages:
+  - stage: Test
+    variables:
+    - group: "eDARTfinadftestvg"
+    jobs:
+      - deployment: eDART_fin_adf_Test
+        environment: 
+         name: eDART_fin_adf_Test
+      - job: "startbuildserver"
+        pool:
+         vmImage: windows-latest
+        
+        steps:
+          - checkout : self
+          
+          
+          - task: AzurePowerShell@5
+            displayName: Start buildserver
+            inputs:
+              azureSubscription: 'WTW-ITCGHF-DEV (d30349e8-fd1d-4327-a4d6-0c15d41fea11)'
+              ScriptType: 'FilePath'
+              ScriptPath: '$(System.DefaultWorkingDirectory)/EDART-FIN-D-ADF/Buildserver/startserver.ps1'
+              ScriptArguments: '-ResourceGroupName "$(Resourcegroupname)" -VmName "$(vmname)"'
+              errorActionPreference: 'Stop'
+              azurePowerShellVersion: 'LatestVersion'
+      - job: Armtemplatedeployement
+        dependsOn: startbuildserver
+        pool:
+           name: R2W-C-Dev
+           demands:
+           - agent.name -equals N20-CS-CRMBS01D
+
+        displayName: Build
+        steps:
+         - checkout : self
+         - task: AzurePowerShell@5
+           
+           displayName: Stop Triggers
+           inputs:
+             azureSubscription: 'WTW-ITCGHF-DEV (d30349e8-fd1d-4327-a4d6-0c15d41fea11)'
+             ScriptType: 'FilePath'
+             ScriptPath: '$(System.DefaultWorkingDirectory)/EDART-FIN-D-ADF/Triggers/Test/stoptriggers.ps1'
+             ScriptArguments: '-ADFResourceGroupName "$(ADFResourceGroupName)" -Datafactoryname "$(Datafactoryname)"'
+             errorActionPreference: 'Stop'
+             azurePowerShellVersion: 'LatestVersion'
+         - task: AzureResourceManagerTemplateDeployment@3
+           displayName: Armtemplate deployment
+           inputs:
+             deploymentScope: 'Resource Group'
+             azureResourceManagerConnection: 'eDART_SC_WIF'
+             subscriptionId: 'd30349e8-fd1d-4327-a4d6-0c15d41fea11'
+             action: 'Create Or Update Resource Group'
+             resourceGroupName: '$(ADFResourceGroupName)'
+             location: '$(Location)'
+             templateLocation: 'Linked artifact'
+             csmFile: '$(System.DefaultWorkingDirectory)/EDART-FIN-D-ADF/ARMTemplateForFactory.json'
+             csmParametersFile: '$(System.DefaultWorkingDirectory)/EDART-FIN-D-ADF/ARMTemplateParametersForFactory.json'
+             overrideParameters: '-factoryName $(DataFactoryName) -AzureSqlDatabaseFCM_connectionString "Integrated Security=False;Encrypt=True;Connection Timeout=30;Data Source=n20-cs-bimsdb5t.database.windows.net;Initial Catalog=@{linkedService().DBName}" -LS_AZ_SQL_DB_connectionString "Integrated Security=False;Encrypt=True;Connection Timeout=30;Data Source=n20-cs-bimsdb5t.database.windows.net;Initial Catalog=@{linkedService().DBName}" -AzureSynapseArtifacts1_properties_typeProperties_endpoint "https://edart-d-fin-synapse-workspace.dev.azuresynapse.net" -LS_AZ_FIN_STORAGE_properties_typeProperties_url "https://edarttfindatalake.dfs.core.windows.net/" -LS_AZ_KEYVAULT_properties_typeProperties_baseUrl "https://edart-data-fin-t-na20-kv.vault.azure.net/" -LS_AZ_TandE_properties_typeProperties_url "https://edarttfindatalake.dfs.core.windows.net/" -LS_ORACLE_DB_properties_typeProperties_connectionString_secretName "ORACLE-DB-PRD-READ" -LS_ORACLE_OX9_properties_typeProperties_connectionString_secretName "ORACLE-DB-OX9" -event_consultingdrivers_trigger_properties_DQ_lastRefreshTimeConsultingDrivers_parameters_filesystem "consultingdrivers" -event_consultingdrivers_trigger_properties_typeProperties_scope "/subscriptions/d30349e8-fd1d-4327-a4d6-0c15d41fea11/resourceGroups/EDART-D-NA20-FIN-RGRP/providers/Microsoft.Storage/storageAccounts/edartdfindatalake" -event_gfa_trigger_properties_DQ_lastRefreshTimeGFA_parameters_filesystem "gfa" -event_gfa_trigger_properties_typeProperties_scope "/subscriptions/d30349e8-fd1d-4327-a4d6-0c15d41fea11/resourceGroups/EDART-D-NA20-FIN-RGRP/providers/Microsoft.Storage/storageAccounts/edartdfindatalake" -event_tande_trigger_properties_DQ_lastRefreshTimeTandE_parameters_filesystem "tande" -event_tande_trigger_properties_typeProperties_scope "/subscriptions/d30349e8-fd1d-4327-a4d6-0c15d41fea11/resourceGroups/EDART-D-NA20-FIN-RGRP/providers/Microsoft.Storage/storageAccounts/edartdfindatalake" -integrationRuntimeSH_properties_typeProperties_linkedInfo_resourceId "/subscriptions/d30349e8-fd1d-4327-a4d6-0c15d41fea11/resourcegroups/MIR-D-EPM-NA20-RGRP1/providers/Microsoft.DataFactory/factories/FTRA-CorpReporting/integrationruntimes/integrationRuntimeSelfHosted" -PE_EDartDataLake_properties_privateLinkResourceId "/subscriptions/d30349e8-fd1d-4327-a4d6-0c15d41fea11/resourceGroups/EDART-T-NA20-FIN-RGRP/providers/Microsoft.Storage/storageAccounts/edarttfindatalake" -PE_EDartDataLake_properties_groupId "dfs"'
+             deploymentMode: 'Incremental'
+         - task: AzurePowerShell@5
+           
+           displayName: Start Triggers
+           inputs:
+             azureSubscription: 'WTW-ITCGHF-DEV (d30349e8-fd1d-4327-a4d6-0c15d41fea11)'
+             ScriptType: 'FilePath'
+             ScriptPath: '$(System.DefaultWorkingDirectory)/EDART-FIN-D-ADF/Triggers/Test/starttriggers.ps1'
+             ScriptArguments: '-ADFResourceGroupName "$(ADFResourceGroupName)" -Datafactoryname "$(Datafactoryname)"'
+             errorActionPreference: 'Stop'
+             azurePowerShellVersion: 'LatestVersion'
+      # - job: "stopbuilserver"
+      #   dependsOn: Armtemplatedeployement
+      #   pool:
+      #    vmImage: windows-latest
+      #   steps:
+      #     - checkout : self
+      #     - task: AzurePowerShell@5
+      #       displayName: Stop buildserver
+      #       inputs:
+      #        azureSubscription: 'WTW-ITCGHF-DEV (d30349e8-fd1d-4327-a4d6-0c15d41fea11)'
+      #        ScriptType: 'FilePath'
+      #        ScriptPath: '$(System.DefaultWorkingDirectory)/EDART-FIN-D-ADF/Buildserver/stopserver.ps1'
+      #        ScriptArguments: '-ResourceGroupName "$(Resourcegroupname)" -VmName "$(vmname)"'
+      #        errorActionPreference: 'Stop'
+      #        azurePowerShellVersion: 'LatestVersion'
+
